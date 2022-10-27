@@ -32,6 +32,13 @@ export interface progressCallback {
     acceptsBuffer?: boolean;
 }
 
+export interface onChunkCallback {
+    (
+        /** Newly downloaded buffer */
+        chunk?: Buffer
+    ): void;
+}
+
 /**
  * Low level interface for downloading files
  */
@@ -51,6 +58,8 @@ export interface DownloadFileParams {
     end?: number;
     /** A callback function accepting two parameters:     ``(received bytes, total)``.     */
     progressCallback?: progressCallback;
+    /** A callback function to return the newly downloaded chunk, accepting one parameter:     ``(chunk)``.     */
+    onChunk?: onChunkCallback;
 }
 
 /**
@@ -74,7 +83,8 @@ export interface DownloadFileParamsV2 {
     partSizeKb?: number;
     /** Progress callback accepting one param. (progress :number) which is a float between 0 and 1 */
     progressCallback?: progressCallback;
-    /** */
+    /** onChunk callback accepting one param (chunk: Buffer) which returns newly downloaded buffer */
+    onChunk?: onChunkCallback;
 
     msgData?: [EntityLike, number];
 }
@@ -405,6 +415,7 @@ export async function downloadFileV2(
         partSizeKb = undefined,
         fileSize = undefined,
         progressCallback = undefined,
+        onChunk = undefined,
         dcId = undefined,
         msgData = undefined,
     }: DownloadFileParamsV2
@@ -432,6 +443,11 @@ export async function downloadFileV2(
             msgData: msgData,
         })) {
             await writer.write(chunk);
+
+            if (onChunk) {
+                onChunk(chunk);
+            }
+
             if (progressCallback) {
                 await progressCallback(
                     downloaded,
@@ -518,7 +534,8 @@ export async function downloadMedia(
     messageOrMedia: Api.Message | Api.TypeMessageMedia,
     outputFile?: OutFile,
     thumb?: number | Api.TypePhotoSize,
-    progressCallback?: ProgressCallback
+    progressCallback?: ProgressCallback,
+    onChunk?: onChunkCallback
 ): Promise<Buffer | string | undefined> {
     /*
       Downloading large documents may be slow enough to require a new file reference
@@ -554,7 +571,8 @@ export async function downloadMedia(
             outputFile,
             date,
             thumb,
-            progressCallback
+            progressCallback,
+            onChunk
         );
     } else if (
         media instanceof Api.MessageMediaDocument ||
@@ -567,7 +585,8 @@ export async function downloadMedia(
             date,
             thumb,
             progressCallback,
-            msgData
+            msgData,
+            onChunk
         );
     } else if (media instanceof Api.MessageMediaContact) {
         return _downloadContact(client, media, {});
@@ -589,7 +608,8 @@ export async function _downloadDocument(
     date: number,
     thumb?: number | string | Api.TypePhotoSize,
     progressCallback?: ProgressCallback,
-    msgData?: [EntityLike, number]
+    msgData?: [EntityLike, number],
+    onChunk?: onChunkCallback
 ): Promise<Buffer | string | undefined> {
     if (doc instanceof Api.MessageMediaDocument) {
         if (!doc.document) {
@@ -630,6 +650,7 @@ export async function _downloadDocument(
             outputFile: outputFile,
             fileSize: size && "size" in size ? bigInt(size.size) : doc.size,
             progressCallback: progressCallback,
+            onChunk: onChunk,
             msgData: msgData,
         }
     );
@@ -767,7 +788,8 @@ export async function _downloadPhoto(
     file?: OutFile,
     date?: number,
     thumb?: number | string | Api.TypePhotoSize,
-    progressCallback?: progressCallback
+    progressCallback?: progressCallback,
+    onChunk?: onChunkCallback
 ): Promise<Buffer | string | undefined> {
     if (photo instanceof Api.MessageMediaPhoto) {
         if (photo.photo instanceof Api.PhotoEmpty || !photo.photo) {
